@@ -2,7 +2,7 @@ package com.eltex;
 
 import java.util.Scanner;
 
-public class Main {
+public class Profit {
     public static void main(String[] args) {
         final var scanner = new Scanner(System.in);
 
