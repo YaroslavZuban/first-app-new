@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 import pandas as pd
+from pykalman import KalmanFilter
 
 # Чтение данных из файла Excel
 df = pd.read_excel('1.xlsx', header=None)
@@ -56,10 +57,42 @@ def dbscan(x, y, eps=0.3, min_samples=2):
 
     return x_reconstructed, y_reconstructed
 
+def kalman_filter(x, y, process_noise=1e-5, measurement_noise=1e-2):
+    # Объединение векторов в один массив
+    data = np.column_stack((x, y))
+
+    # Инициализация фильтра Калмана
+    kf = KalmanFilter(initial_state_mean=data[0],
+                      initial_state_covariance=np.eye(data.shape[1]),
+                      observation_covariance=measurement_noise * np.eye(data.shape[1]),
+                      transition_covariance=process_noise * np.eye(data.shape[1]))
+
+    # Прогон данных через фильтр Калмана
+    smoothed_state_means, _ = kf.filter(data)
+
+    # Извлечение отфильтрованных значений
+    x_filtered, y_filtered = smoothed_state_means[:, 0], smoothed_state_means[:, 1]
+
+    return x_filtered, y_filtered
+
+def exponential_moving_average(x, y, alpha=0.2):
+    # Создание DataFrame для удобства работы с pandas
+    df_smoothed = pd.DataFrame({'x': x, 'y': y})
+
+    # Применение экспоненциального скользящего среднего к каждому столбцу
+    df_smoothed['x_smoothed'] = df_smoothed['x'].ewm(alpha=alpha, adjust=False).mean()
+    df_smoothed['y_smoothed'] = df_smoothed['y'].ewm(alpha=alpha, adjust=False).mean()
+
+    return df_smoothed['x_smoothed'].values, df_smoothed['y_smoothed'].values
+
 # Обнаружение выбросов и восстановление значений с помощью диаграммы рассеяния
 x_reconstructed_scatter, y_reconstructed_scatter = scatterplot(x, y)
 # Обнаружение выбросов и восстановление значений с помощью пространственной кластеризации (DBSCAN)
 x_reconstructed_dbscan, y_reconstructed_dbscan = dbscan(x, y)
+# Применение фильтра Калмана к данным после обнаружения выбросов с использованием scatterplot
+x_filtered_kalman, y_filtered_kalman = kalman_filter(x_reconstructed_scatter, y_reconstructed_scatter)
+# Сглаживание значений ряда с помощью алгоритма экспоненциального скользящего среднего
+x_smoothed_ema, y_smoothed_ema = exponential_moving_average(x_filtered_kalman, y_filtered_kalman, alpha=0.2)
 
 # Визуализация результатов
 plt.figure(figsize=(10, 5))
@@ -75,6 +108,20 @@ plt.scatter(x, y, label='Original Data')
 plt.scatter(x_reconstructed_dbscan, y_reconstructed_dbscan, label='Reconstructed Data (DBSCAN)', color='green',
             marker='o')
 plt.title('DBSCAN Reconstruction')
+plt.legend()
+
+plt.figure(figsize=(10, 5))
+plt.scatter(x, y, label='Original Data')
+plt.scatter(x_reconstructed_scatter, y_reconstructed_scatter, label='Reconstructed Data (Scatter)', color='red',
+            marker='x')
+plt.scatter(x_filtered_kalman, y_filtered_kalman, label='Filtered Data (Kalman)', color='blue', marker='^')
+plt.title('Kalman Filtered Data (after Scatterplot Reconstruction)')
+plt.legend()
+
+plt.figure(figsize=(10, 5))
+plt.scatter(x, y, label='Original Data')
+plt.scatter(x_smoothed_ema, y_smoothed_ema, label='Smoothed Data (EMA)', color='purple', marker='s')
+plt.title('Exponential Moving Average Smoothing')
 plt.legend()
 
 plt.tight_layout()
